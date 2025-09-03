@@ -3,6 +3,7 @@
 #include <map>
 #include <string.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "chunk.hpp"
@@ -11,15 +12,16 @@
 #include "shared_queue.hpp"
 #include "timer.hpp"
 
-using Result = std::map<std::string, Data>;
+using Result = std::map<std::string_view, Data>;
+using PartialResult = std::unordered_map<std::string_view, Data, SVHash, StrEqual>;
 
 constexpr Chunk sentinel = {nullptr, 0};
 constexpr uint32_t CHUNK_SIZE = 128 * 1024;
 constexpr uint32_t MAX_LINE_LENGTH = 106;
 
-void combineResult(Result &lhs, const Result &rhs) {
-    for (const auto &[k, v] : rhs)
-        lhs[k] = lhs.count(k) ? lhs[k].combine(rhs.at(k)) : rhs.at(k);
+void combinePartialResult(PartialResult &lhs, const PartialResult &rhs) {
+    for (const auto &kv : rhs)
+        lhs[kv.first] += rhs.at(kv.first);
 }
 
 /*
@@ -40,8 +42,8 @@ float parseTemperature(const char *s) {
     return sign * (combined * 0.1f);
 }
 
-Result consumerThread(SharedQueue<Chunk> &queue) {
-    Result res;
+PartialResult consumerThread(SharedQueue<Chunk> &queue) {
+    PartialResult res;
     while (true) {
         const Chunk chunk = queue.pop();
         if (chunk == sentinel)
@@ -53,19 +55,13 @@ Result consumerThread(SharedQueue<Chunk> &queue) {
             continue;
         ++itr;
         const char *end = chunk.data + chunk.size;
-        std::string name;
         while (itr < end) {
             const char *sc_ptr =
                 static_cast<const char *>(memchr(itr, ';', end - itr));
             if (!sc_ptr)
                 break;
-            name.assign(itr, sc_ptr);
-            const float value = parseTemperature(sc_ptr + 1);
-            auto &data = res[std::move(name)];
-            ++data.occurences;
-            data.sum += value;
-            data.min = std::min(data.min, value);
-            data.max = std::max(data.max, value);
+            std::string_view name(itr, sc_ptr - itr);
+            res[std::move(name)] += parseTemperature(sc_ptr + 1);
 
             itr = static_cast<const char *>(
                 memchr(sc_ptr + 1, '\n', end - (sc_ptr + 1)));
@@ -78,13 +74,8 @@ Result consumerThread(SharedQueue<Chunk> &queue) {
             const char *sc_ptr =
                 static_cast<const char *>(memchr(itr, ';', MAX_LINE_LENGTH));
             if (sc_ptr) {
-                name.assign(itr, sc_ptr);
-                const float value = parseTemperature(sc_ptr + 1);
-                auto &data = res[std::move(name)];
-                ++data.occurences;
-                data.sum += value;
-                data.min = std::min(data.min, value);
-                data.max = std::max(data.max, value);
+                std::string_view name(itr, sc_ptr - itr);
+                res[std::move(name)] += parseTemperature(sc_ptr + 1);
             }
         }
     }
@@ -104,10 +95,12 @@ int main(int argc, char **argv) {
     const char *end = file.end();
     SharedQueue<Chunk> queue;
 
+    // TODO: process the very first line in the file
+
     // Consumers
     const uint32_t n_consumers =
         argc == 2 ? std::thread::hardware_concurrency() : std::stoul(argv[2]);
-    std::vector<std::future<Result>> consumers;
+    std::vector<std::future<PartialResult>> consumers;
     for (uint32_t i = 0; i < n_consumers; ++i) {
         consumers.push_back(
             std::async(std::launch::async, consumerThread, std::ref(queue)));
@@ -123,20 +116,19 @@ int main(int argc, char **argv) {
     }
 
     // Wait consumers and merge results
-    Result result;
-    for (uint32_t i = 0; i < n_consumers; ++i) {
+    PartialResult result;
+    for (uint32_t i = 0; i < n_consumers; ++i)
         queue.push(sentinel);
-    }
-    for (auto &consumer : consumers) {
-        Result res = consumer.get();
-        combineResult(result, res);
-    }
+    for (auto &consumer : consumers)
+        combinePartialResult(result, consumer.get());
 
     // Final output
-    for (const auto &[name, data] : result) {
+    Result ordered_result;
+    for (const auto &[k, v] : result)
+        ordered_result[k] = v;
+    for (const auto &[name, data] : ordered_result)
         std::cout << name << ": " << data.min << "/"
                   << data.sum / data.occurences << "/" << data.max << "\n";
-    }
 
     const double ms = timer.elapsedMs();
     std::cout << "Took: " << ms << "ms\n";
