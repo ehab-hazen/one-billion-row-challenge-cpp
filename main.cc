@@ -61,7 +61,7 @@ Result consumerThread(SharedQueue<Chunk> &queue) {
                 break;
             name.assign(itr, sc_ptr);
             const float value = parseTemperature(sc_ptr + 1);
-            auto &data = res[name];
+            auto &data = res[std::move(name)];
             ++data.occurences;
             data.sum += value;
             data.min = std::min(data.min, value);
@@ -80,7 +80,7 @@ Result consumerThread(SharedQueue<Chunk> &queue) {
             if (sc_ptr) {
                 name.assign(itr, sc_ptr);
                 const float value = parseTemperature(sc_ptr + 1);
-                auto &data = res[name];
+                auto &data = res[std::move(name)];
                 ++data.occurences;
                 data.sum += value;
                 data.min = std::min(data.min, value);
