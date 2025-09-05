@@ -1,8 +1,8 @@
 #include <future>
 #include <iostream>
-#include <map>
 #include <string.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "chunk.hpp"
@@ -12,7 +12,7 @@
 #include "timer.hpp"
 #include "unordered_dense.hpp"
 
-using Result = std::map<std::string_view, Data>;
+using Result = std::vector<std::pair<std::string_view, Data>>;
 using PartialResult = ankerl::unordered_dense::map<std::string_view, Data>;
 
 constexpr Chunk sentinel = {nullptr, 0};
@@ -40,6 +40,17 @@ float parseTemperature(const char *s) {
     int frac = p[(p[1] == '.') ? 2 : 3] - '0';
     int combined = pre * 10 + frac; /* integer representation scaled by 10 */
     return sign * (combined * 0.1f);
+}
+
+Result getOrderedResult(const PartialResult &result) {
+    Result res;
+    for (const auto &[k, v] : result)
+        res.emplace_back(k, v);
+    std::sort(res.begin(), res.end(), [](const auto &a, const auto &b) {
+        return memcmp(a.first.data(), b.first.data(),
+                      std::min(a.first.size(), b.first.size())) < 0;
+    });
+    return res;
 }
 
 PartialResult consumerThread(SharedQueue<Chunk> &queue) {
@@ -123,10 +134,7 @@ int main(int argc, char **argv) {
         combinePartialResult(result, consumer.get());
 
     // Final output
-    Result ordered_result;
-    for (const auto &[k, v] : result)
-        ordered_result[k] = v;
-    for (const auto &[name, data] : ordered_result)
+    for (const auto &[name, data] : getOrderedResult(result))
         std::cout << name << ": " << data.min << "/"
                   << data.sum / data.occurences << "/" << data.max << "\n";
 
