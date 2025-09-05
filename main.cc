@@ -3,7 +3,6 @@
 #include <map>
 #include <string.h>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "chunk.hpp"
@@ -11,25 +10,10 @@
 #include "mmap_file.hpp"
 #include "shared_queue.hpp"
 #include "timer.hpp"
-#include "wyhash.hpp"
-
-struct SVHash {
-    size_t operator()(const std::string_view &s) const {
-        constexpr uint64_t wyp[4]{
-            14755684452193967131UL, 15092012650854654833UL,
-            12184421849092937273UL, 12437058074464530739UL};
-        return wyhash(s.data(), s.size(), 0, wyp);
-    }
-};
-
-struct StrEqual {
-    bool operator()(const std::string_view &a, const std::string_view &b) const {
-        return memcmp(a.data(), b.data(), a.size()) == 0;
-    }
-};
+#include "unordered_dense.hpp"
 
 using Result = std::map<std::string_view, Data>;
-using PartialResult = std::unordered_map<std::string_view, Data, SVHash, StrEqual>;
+using PartialResult = ankerl::unordered_dense::map<std::string_view, Data>;
 
 constexpr Chunk sentinel = {nullptr, 0};
 constexpr uint32_t CHUNK_SIZE = 128 * 1024;
