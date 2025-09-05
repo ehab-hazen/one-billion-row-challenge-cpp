@@ -18,6 +18,7 @@ using PartialResult = ankerl::unordered_dense::map<std::string_view, Data>;
 constexpr Chunk sentinel = {nullptr, 0};
 constexpr uint32_t CHUNK_SIZE = 128 * 1024;
 constexpr uint32_t MAX_LINE_LENGTH = 106;
+constexpr uint32_t EXPECTED_UNIQUE_STATIONS = 413;
 
 void combinePartialResult(PartialResult &lhs, const PartialResult &rhs) {
     for (const auto &[k, v] : rhs)
@@ -55,6 +56,8 @@ Result getOrderedResult(const PartialResult &result) {
 
 PartialResult consumerThread(SharedQueue<Chunk> &queue) {
     PartialResult res;
+    res.reserve(2 * EXPECTED_UNIQUE_STATIONS);
+    res.max_load_factor(0.7);
     while (true) {
         const Chunk chunk = queue.pop();
         if (chunk == sentinel)
