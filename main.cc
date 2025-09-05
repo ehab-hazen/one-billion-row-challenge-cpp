@@ -20,8 +20,8 @@ constexpr uint32_t CHUNK_SIZE = 128 * 1024;
 constexpr uint32_t MAX_LINE_LENGTH = 106;
 
 void combinePartialResult(PartialResult &lhs, const PartialResult &rhs) {
-    for (const auto &kv : rhs)
-        lhs[kv.first] += rhs.at(kv.first);
+    for (const auto &[k, v] : rhs)
+        lhs[k] += v;
 }
 
 /*
