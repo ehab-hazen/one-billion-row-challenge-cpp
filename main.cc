@@ -149,5 +149,5 @@ int main(int argc, char **argv) {
     const double ms = timer.elapsedMs();
     std::cout << "Took: " << ms << "ms\n";
 
-    return 1;
+    return 0;
 }
